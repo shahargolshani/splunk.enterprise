@@ -42,7 +42,14 @@ options:
   version:
     description:
       - Version of Splunk Universal Forwarder to install (e.g., V(10.0.1)).
-      - The build number will be automatically looked up from the versions file.
+      - Required when O(state=present).
+    type: str
+
+  version_hash:
+    description:
+      - Build hash corresponding to the Splunk Universal Forwarder version (e.g., V(c486717c322b)).
+      - The build hash can be found on the Splunk download page for each version.
+      - Combined with O(version) to form the RPM filename (e.g., V(10.0.1-c486717c322b)).
       - Required when O(state=present).
     type: str
 
@@ -59,20 +66,39 @@ options:
     type: str
     no_log: true
 
+  cpu:
+    description:
+      - CPU architecture for the Splunk Universal Forwarder package.
+      - V(64-bit) for x86_64 architecture.
+      - V(ARM) for aarch64 architecture.
+    type: str
+    choices: ['64-bit', 'ARM']
+    default: 64-bit
+
 notes:
   - This module only works on RHEL 8, 9, and 10 systems.
   - The RPM package will be downloaded to V(/opt) from the official Splunk download site.
   - Splunk Universal Forwarder will be installed to V(/opt/splunkforwarder).
   - Requires root privileges to install/remove packages and start services.
-  - The module includes built-in version-to-build mappings for Splunk UF versions 9.0.9 through 10.0.1.
+  - The RPM filename is constructed as V(splunkforwarder-{version}-{version_hash}.{cpu_arch}.rpm).
   - When upgrading from a previous version, $SPLUNK_HOME/etc & $SPLUNK_HOME/var directories will be preserved to save previous data.
 """
 
 EXAMPLES = r"""
-- name: Install Splunk Universal Forwarder
+- name: Install Splunk Universal Forwarder (x86_64)
   splunk.enterprise.splunk_universal_forwarder_linux:
     state: present
     version: "10.0.1"
+    version_hash: "c486717c322b"
+    username: admin
+    password: "changeme123"
+
+- name: Install Splunk Universal Forwarder on ARM architecture
+  splunk.enterprise.splunk_universal_forwarder_linux:
+    state: present
+    version: "10.0.1"
+    version_hash: "c486717c322b"
+    cpu: ARM
     username: admin
     password: "changeme123"
 
@@ -84,6 +110,7 @@ EXAMPLES = r"""
   splunk.enterprise.splunk_universal_forwarder_linux:
     state: present
     version: "10.0.1"
+    version_hash: "c486717c322b"
     username: admin
     password: "changeme123"
   check_mode: true
@@ -97,13 +124,13 @@ msg:
   sample: "Splunk Universal Forwarder 10.0.1 installed successfully"
 
 version:
-  description: Version of Splunk Universal Forwarder that was installed or removed.
+  description: Version of Splunk Universal Forwarder that was installed.
   type: str
-  returned: always
+  returned: when state is present
   sample: "10.0.1"
 
-build_number:
-  description: Build number corresponding to the version.
+version_hash:
+  description: Build hash corresponding to the version.
   type: str
   returned: when state is present
   sample: "c486717c322b"
@@ -113,6 +140,12 @@ rpm_path:
   type: str
   returned: when state is present
   sample: "/opt/splunkforwarder-10.0.1-c486717c322b.x86_64.rpm"
+
+cpu_arch:
+  description: CPU architecture used for the installation.
+  type: str
+  returned: when state is present
+  sample: "x86_64"
 
 splunk_home:
   description: Installation directory of Splunk Universal Forwarder.
@@ -156,54 +189,6 @@ def check_rhel_version(module: AnsibleModule) -> str:
             module.fail_json(msg="/etc/os-release not found. Cannot verify RHEL version")
     except Exception as e:
         module.fail_json(msg=f"Error checking RHEL version: {str(e)}")
-
-
-def get_versions_map() -> dict:
-    """Return the versions to build-number mapping."""
-    return {
-        "10.0.1": "c486717c322b",
-        "10.0.0": "e8eb0c4654f8",
-        "9.4.7": "2a9293b80994",
-        "9.4.6": "60284236e579",
-        "9.4.5": "8fb2a6c586a5",
-        "9.4.4": "f627d88b766b",
-        "9.4.3": "237ebbd22314",
-        "9.4.2": "e9664af3d956",
-        "9.4.1": "e3bdab203ac8",
-        "9.4.0": "6b4ebe426ca6",
-        "9.3.8": "26d4c728325e",
-        "9.3.7": "82e666993132",
-        "9.3.6": "6320df444747",
-        "9.3.5": "37a93798d197",
-        "9.3.4": "ec9a1599553c",
-        "9.3.3": "7774d8050982",
-        "9.3.2": "7486e92e5971",
-        "9.3.1": "550742880053",
-        "9.3.0": "5449755b46d0",
-        "9.2.11": "6c457f00305f",
-        "9.2.10": "9f32f38448a5",
-        "9.2.9": "8482613309a6",
-        "9.2.8": "93f3503f563d",
-        "9.2.7": "6df8899806b7",
-        "9.2.6": "778553f18e87",
-        "9.1.10": "f519446d315b",
-        "9.1.9": "301569426f4a",
-        "9.1.8": "648a8677f15b",
-        "9.1.7": "e17104057ef0",
-        "9.1.6": "a28f08fac354",
-        "9.1.5": "29befd543def",
-        "9.1.4": "a414fc70250e",
-        "9.0.10": "099a46979944",
-        "9.0.9": "249852267605",
-    }
-
-
-def get_build_number(module: AnsibleModule, versions: dict, version: str) -> str:
-    """Get the build number for a specific version."""
-    if version not in versions:
-        available = ', '.join(sorted(versions.keys(), reverse=True))
-        module.fail_json(msg=f"Version {version} not found. Available versions: {available}")
-    return versions[version]
 
 
 def is_splunk_installed(module: AnsibleModule) -> bool:
@@ -424,21 +409,32 @@ def main() -> None:
         argument_spec=dict(
             state=dict(type='str', default='present', choices=['present', 'absent']),
             version=dict(type='str'),
+            version_hash=dict(type='str'),
+            cpu=dict(type='str', default='64-bit', choices=['64-bit', 'ARM']),
             username=dict(type='str'),
             password=dict(type='str', no_log=True),
         ),
         required_if=[
-            ('state', 'present', ['version', 'username', 'password']),
+            ('state', 'present', ['version', 'version_hash', 'username', 'password']),
         ],
         supports_check_mode=True,
     )
 
     state = module.params['state']
     version = module.params['version']
+    version_hash = module.params['version_hash']
+    cpu = module.params['cpu']
     username = module.params['username']
     password = module.params['password']
     download_dir = '/opt'
     splunk_home = '/opt/splunkforwarder'
+
+    # Map user-friendly CPU names to architecture strings
+    cpu_arch_map = {
+        '64-bit': 'x86_64',
+        'ARM': 'aarch64',
+    }
+    cpu_arch = cpu_arch_map[cpu]
 
     # Check RHEL version
     rhel_version = check_rhel_version(module)
@@ -446,7 +442,6 @@ def main() -> None:
 
     result = dict(
         changed=False,
-        version=version,
         splunk_home=splunk_home,
     )
 
@@ -457,9 +452,9 @@ def main() -> None:
         module.exit_json(**result)
 
     # Handle installation (state == 'present')
-    versions = get_versions_map()
-    build_number = get_build_number(module, versions, version)
-    result['build_number'] = build_number
+    result['version'] = version
+    result['version_hash'] = version_hash
+    result['cpu_arch'] = cpu_arch
 
     # Check if already installed with correct version
     installed_version = get_installed_version(module)
@@ -467,10 +462,10 @@ def main() -> None:
         result['msg'] = f"Splunk Universal Forwarder {version} is already installed"
         module.exit_json(**result)
 
-    rpm_filename = f"splunkforwarder-{version}-{build_number}.x86_64.rpm"
+    rpm_filename = f"splunkforwarder-{version}-{version_hash}.{cpu_arch}.rpm"
     rpm_url = f"https://download.splunk.com/products/universalforwarder/releases/{version}/linux/{rpm_filename}"
     checksum_url = f"{rpm_url}.sha512"
-    
+
     rpm_path = os.path.join(download_dir, rpm_filename)
     checksum_path = f"{rpm_path}.sha512"
     
@@ -495,7 +490,6 @@ def main() -> None:
 
     module.log(f"Installing Splunk Universal Forwarder {version}")
     rc, out, err = install_rpm(module, rpm_path)
-
     if rc != 0:
         module.fail_json(msg=f"Failed to install RPM: {err}", stdout=out, stderr=err)
 
