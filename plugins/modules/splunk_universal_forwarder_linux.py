@@ -232,6 +232,17 @@ def get_installed_version(module: AnsibleModule) -> str | None:
         return None
 
 
+def check_if_downgrade(version_a, version_b):
+    """Allow only universal forwarder upgrades, To prevent configuration errors - To downgrade use absent -> present"""
+    a = list(map(int, version_a.split('.')))
+    b = list(map(int, version_b.split('.')))
+    for i in range(3):
+        if a[i] > b[i]:
+            return True
+        if a[i] < b[i]:
+            return False
+    return False
+
 def download_file(module: AnsibleModule, url: str, dest_path: str) -> None:
     """Download a file from URL to destination path."""
     if module.check_mode:
@@ -530,15 +541,16 @@ def main() -> None:
     result['version_hash'] = version_hash
     result['cpu_arch'] = cpu_arch
 
-    # Check if already installed with correct version
     installed_version = get_installed_version(module)
 
-    # if forward_servers is None:
-    #     module.exit_json(msg=f"forward_servers is None in the module params: {forward_servers}")
-    # elif len(forward_servers) == 0:
-    #     module.exit_json(msg="forward_servers is an empty list")
-    # else:
-    #     module.exit_json(msg=f"forward_servers is a list: {forward_servers}")
+    if installed_version:
+        if check_if_downgrade(installed_version, version):
+            result['msg'] = (
+                f"Installed Version {installed_version} is newer than {version} "
+                "Only universal forwarder upgrades are allowed. "
+                "To downgrade use absent -> present."
+            )
+            module.exit_json(**result)
 
     if installed_version and forward_servers is not None:
         existing_forward_servers = get_existing_forward_servers(module, splunk_home, username, password)
