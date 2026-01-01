@@ -47,15 +47,16 @@ options:
 
   version:
     description:
-      - Version of Splunk Universal Forwarder to install (e.g., V(10.0.1)).
+      - Version of Splunk Universal Forwarder to install (e.g., V(9.4.7)).
+      - Only major version 9 is supported. Version 10.0.0 and above is not supported.
       - Required when O(state=present).
     type: str
 
   release_id:
     description:
-      - Release id corresponding to the Splunk Universal Forwarder version (e.g., V(c486717c322b)).
+      - Release id corresponding to the Splunk Universal Forwarder version (e.g., V(2a9293b80994)).
       - The release id can be found on the Splunk download page for each version.
-      - Combined with O(version) to form the RPM filename (e.g., V(10.0.1-c486717c322b)).
+      - Combined with O(version) to form the RPM filename (e.g., V(9.4.7-2a9293b80994)).
       - Required when O(state=present).
     type: str
 
@@ -105,6 +106,7 @@ options:
 
 notes:
   - This module only works on RHEL 8, 9, and 10 systems.
+  - Only Splunk Universal Forwarder major version 9 is supported. Version 10.0.0 and above is not supported.
   - The RPM package will be downloaded to V(/opt) from the official Splunk download site.
   - Splunk Universal Forwarder will be installed to V(/opt/splunkforwarder).
   - Requires root privileges to install/remove packages and start services.
@@ -116,16 +118,16 @@ EXAMPLES = r"""
 - name: Install Splunk Universal Forwarder (x86_64)
   splunk.enterprise.splunk_universal_forwarder_linux:
     state: present
-    version: "10.0.1"
-    release_id: "c486717c322b"
+    version: "9.4.7"
+    release_id: "2a9293b80994"
     username: admin
     password: "changeme123"
 
 - name: Install Splunk Universal Forwarder on ARM architecture, with no forward-servers configured
   splunk.enterprise.splunk_universal_forwarder_linux:
     state: present
-    version: "10.0.1"
-    release_id: "c486717c322b"
+    version: "9.4.7"
+    release_id: "2a9293b80994"
     cpu: ARM
     username: admin
     password: "changeme123"
@@ -134,8 +136,8 @@ EXAMPLES = r"""
 - name: Install Splunk Universal Forwarder with forward-servers configuration
   splunk.enterprise.splunk_universal_forwarder_linux:
     state: present
-    version: "10.0.1"
-    release_id: "c486717c322b"
+    version: "9.4.7"
+    release_id: "2a9293b80994"
     username: admin
     password: "changeme123"
     forward_servers:
@@ -145,8 +147,8 @@ EXAMPLES = r"""
 - name: Install Splunk Universal Forwarder with deployment server
   splunk.enterprise.splunk_universal_forwarder_linux:
     state: present
-    version: "10.0.1"
-    release_id: "c486717c322b"
+    version: "9.4.7"
+    release_id: "2a9293b80994"
     username: admin
     password: "changeme123"
     deployment_server: "deployment-server.example.com:8089"
@@ -154,8 +156,8 @@ EXAMPLES = r"""
 - name: Remove deployment server configuration
   splunk.enterprise.splunk_universal_forwarder_linux:
     state: present
-    version: "10.0.1"
-    release_id: "c486717c322b"
+    version: "9.4.7"
+    release_id: "2a9293b80994"
     username: admin
     password: "changeme123"
     deployment_server: ""
@@ -167,8 +169,8 @@ EXAMPLES = r"""
 - name: Install Splunk Universal Forwarder (check mode)
   splunk.enterprise.splunk_universal_forwarder_linux:
     state: present
-    version: "10.0.1"
-    release_id: "c486717c322b"
+    version: "9.4.7"
+    release_id: "2a9293b80994"
     username: admin
     password: "changeme123"
   check_mode: true
@@ -551,12 +553,18 @@ def enable_systemd_service(
     else:
         module.fail_json(msg="Failed to stop Splunk service")
 
-    rc, out, err = module.run_command([splunk_bin, "disable", "boot-start"], check_rc=False)
+    rc, out, err = module.run_command(
+        [splunk_bin, "disable", "boot-start"],
+        check_rc=False,
+    )
     time.sleep(2)
     if rc != 0:
         module.fail_json(msg=f"Failed to disable boot-start: {err}")
 
-    rc, out, err = module.run_command([splunk_bin, "enable", "boot-start"], check_rc=False)
+    rc, out, err = module.run_command(
+        [splunk_bin, "enable", "boot-start"],
+        check_rc=False,
+    )
     time.sleep(2)
     if rc != 0:
         module.fail_json(msg=f"Failed to enable boot-start: {err}")
@@ -737,6 +745,14 @@ def main() -> None:
         purge_splunk_home(module, splunk_home)
         result.update(removal_result)
         module.exit_json(**result)
+
+    # Check if version is supported (only major version 9)
+    major_version = int(version.split(".")[0])
+    if major_version >= 10:
+        module.fail_json(
+            msg="Only Universal Forwarder version 9 is supported - "
+            "Universal Forwarder Version 10.0.0 and above is not supported",
+        )
 
     # Handle installation (state == 'present')
     result["version"] = version
