@@ -14,7 +14,8 @@ module: splunk_universal_forwarder_linux
 short_description: Manage Splunk Universal Forwarder installations on RHEL systems
 
 description:
-  - This module manages Splunk Universal Forwarder installations on RHEL 8, 9, and 10 systems using RPM packages.
+  - This module manages Splunk Universal Forwarder installations on RHEL 8, 9, and 10 systems with RPM package.
+  - Support Universal Forwarder version 9 only. Version 10.0.0 and above is not supported.
   - Downloads the Splunk Universal Forwarder RPM and verifies its integrity using SHA512 checksums.
   - Supports idempotent installation and removal of the forwarder.
   - Automatically configures user credentials and starts the forwarder on first installation.
