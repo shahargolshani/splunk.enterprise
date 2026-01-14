@@ -15,7 +15,6 @@ short_description: Manage Splunk Universal Forwarder installations on RHEL syste
 
 description:
   - This module manages Splunk Universal Forwarder installations on RHEL 8, 9, and 10 systems with RPM package.
-  - Support Universal Forwarder version 9 only. Version 10.0.0 and above is not supported.
   - Downloads the Splunk Universal Forwarder RPM and verifies its integrity using SHA512 checksums.
   - Supports idempotent installation and removal of the forwarder.
   - Automatically configures user credentials and starts the forwarder on first installation.
@@ -49,7 +48,6 @@ options:
   version:
     description:
       - Version of Splunk Universal Forwarder to install (e.g., V(9.4.7)).
-      - Only major version 9 is supported. Version 10.0.0 and above is not supported.
       - Required when O(state=present).
     type: str
 
@@ -502,16 +500,18 @@ def remove_deployment_server(module: AnsibleModule, splunk_home: str) -> bool:
             module.warn(f"Failed to remove deploymentclient.conf: {str(e)}")
             return False
         # Restart Splunk service to apply changes
-        splunk_bin = os.path.join(splunk_home, "bin", "splunk")
-        rc, out, err = module.run_command([splunk_bin, "restart"], check_rc=False)
+        rc, out, err = module.run_command(
+            ["systemctl", "restart", "SplunkForwarder"],
+            check_rc=False,
+        )
         if rc != 0:
             module.warn(
-                f"Failed to restart Splunk after removing deployment server: {err}",
+                f"Failed to restart SplunkForwarder after removing deployment server: {err}",
             )
             return False
         if not check_splunk_service(module, splunk_home, "start"):
             module.warn(
-                "Splunk service did not restart properly after removing deployment server",
+                "SplunkForwarder service did not restart properly after removing deployment server",
             )
             return False
         return True
@@ -555,29 +555,28 @@ def enable_systemd_service(
         module.fail_json(msg="Failed to stop Splunk service")
 
     rc, out, err = module.run_command(
-        [splunk_bin, "disable", "boot-start"],
+        [splunk_bin, "enable", "boot-start", "-systemd-managed", "1"],
         check_rc=False,
     )
     time.sleep(2)
-    if rc != 0:
-        module.fail_json(msg=f"Failed to disable boot-start: {err}")
-
-    rc, out, err = module.run_command(
-        [splunk_bin, "enable", "boot-start"],
-        check_rc=False,
-    )
-    time.sleep(2)
-    if rc != 0:
+    if rc == 8:
+        module.log(
+            "Boot-start already enabled (exit code 8) - service is enabled, continuing",
+        )
+    elif rc != 0 and rc != 8:
         module.fail_json(msg=f"Failed to enable boot-start: {err}")
 
-    rc, out, err = module.run_command([splunk_bin, "start"], check_rc=False)
+    rc, out, err = module.run_command(
+        ["systemctl", "start", "SplunkForwarder"],
+        check_rc=False,
+    )
     time.sleep(2)
     if rc != 0:
-        module.fail_json(msg="Failed to start Splunk")
+        module.fail_json(msg="Failed to start SplunkForwarder")
     if check_splunk_service(module, splunk_home, "start"):
-        module.log("Splunk service started successfully")
+        module.log("SplunkForwarder service started successfully")
     else:
-        module.fail_json(msg="Failed to start Splunk service")
+        module.fail_json(msg="Failed to start SplunkForwarder service")
     return rc, out, err
 
 
@@ -629,21 +628,26 @@ def uninstall_splunk(module: AnsibleModule, splunk_home: str) -> dict:
         return result
 
     if not module.check_mode:
-        # Stop Splunk service
-        splunk_bin = os.path.join(splunk_home, "bin", "splunk")
-        if os.path.exists(splunk_bin):
-            module.run_command([splunk_bin, "stop"], check_rc=False)
-            # Verify the service stopped
-            if check_splunk_service(module, splunk_home, "stop"):
-                module.log("Splunk service stopped successfully")
-            else:
-                module.fail_json(msg="Failed to stop Splunk service")
         rc, out, err = module.run_command(
-            [splunk_bin, "disable", "boot-start"],
+            ["systemctl", "disable", "SplunkForwarder"],
             check_rc=False,
         )
         if rc != 0:
-            module.fail_json(msg=f"Failed to disable boot-start: {err}")
+            module.fail_json(msg=f"Failed to disable SplunkForwarder: {err}")
+        time.sleep(2)
+        # Stop Splunk service
+        rc, out, err = module.run_command(
+            ["systemctl", "stop", "SplunkForwarder"],
+            check_rc=False,
+        )
+        if rc != 0:
+            module.fail_json(msg=f"Failed to stop Splunk service: {err}")
+        time.sleep(2)
+        # Verify the service stopped
+        if check_splunk_service(module, splunk_home, "stop"):
+            module.log("Splunk service stopped successfully")
+        else:
+            module.fail_json(msg="Failed to stop Splunk service")
     # Remove the RPM package
     rc, out, err = remove_rpm(module, "splunkforwarder")
     if rc != 0 and "not installed" not in err.lower():
@@ -746,14 +750,6 @@ def main() -> None:
         purge_splunk_home(module, splunk_home)
         result.update(removal_result)
         module.exit_json(**result)
-
-    # Check if version is supported (only major version 9)
-    major_version = int(version.split(".")[0])
-    if major_version >= 10:
-        module.fail_json(
-            msg="Only Universal Forwarder version 9 is supported - "
-            "Universal Forwarder Version 10.0.0 and above is not supported",
-        )
 
     # Handle installation (state == 'present')
     result["version"] = version
