@@ -18,7 +18,6 @@ Version added: 1.0.0
 Synopsis
 --------
 - This module manages Splunk Universal Forwarder installations on RHEL 8, 9, and 10 systems with RPM package.
-- Support Universal Forwarder version 9 only. Version 10.0.0 and above is not supported.
 - Downloads the Splunk Universal Forwarder RPM and verifies its integrity using SHA512 checksums.
 - Supports idempotent installation and removal of the forwarder.
 - Automatically configures user credentials and starts the forwarder on first installation.
@@ -188,7 +187,6 @@ Parameters
                 </td>
                 <td>
                         <div>Version of Splunk Universal Forwarder to install (e.g., V(9.4.7)).</div>
-                        <div>Only major version 9 is supported. Version 10.0.0 and above is not supported.</div>
                         <div>Required when O(state=present).</div>
                 </td>
             </tr>
