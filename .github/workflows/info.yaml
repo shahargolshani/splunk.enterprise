@@ -26,7 +26,7 @@ jobs:
     name: Test Integ
     runs-on: ubuntu-latest
     environment:
-      name: 'eco-splunk-daily'
+      name: 'eco-splunk-protected'
     needs:
       - check-actor
     if: >-
