@@ -2,7 +2,7 @@
 name: "Integration Tests"
 
 concurrency:
-  group: integration-${{ github.head_ref || github.run_id }}
+  group: ${{ github.actor == 'pre-commit-ci[bot]' && format('integration-bot-{0}', github.run_id) || 'integration' }}
   cancel-in-progress: true
 
 on:
