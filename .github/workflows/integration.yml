@@ -9,7 +9,6 @@ on:
   pull_request_target:
     branches: [main]
     types:
-      - labeled
       - opened
       - reopened
       - synchronize
@@ -21,31 +20,13 @@ on:
     - cron: "0 0 * * *"
 
 jobs:
-  check-actor:
-    name: Check Actor
-    if: >-
-      github.event_name == 'pull_request_target' &&
-      github.actor != 'pre-commit-ci[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Actor ${{ github.actor }} is allowed to run integration tests"
-
-  safe-to-test:
-    needs:
-      - check-actor
-    if: >-
-      always() &&
-      github.event_name == 'pull_request_target' &&
-      needs.check-actor.result == 'success' &&
-      (github.event.label.name == 'safe to test' ||
-      github.event.action != 'labeled')
-    uses: ansible-network/github_actions/.github/workflows/safe-to-test.yml@main
-
   integration:
     name: "${{ matrix.ansible_version }} / ${{ matrix.node_id }}"
     runs-on: ["rhel", "${{ matrix.node_id }}"]
     env:
       PYTHON_VERSION: "3.12"
+    # Environment gate requires a maintainer to approve before secrets and
+    # self-hosted runner resources are made available to PR code.
     environment:
       name: >-
         ${{
@@ -53,17 +34,7 @@ jobs:
           github.event_name == 'workflow_dispatch' && 'eco-splunk-daily' ||
           'eco-splunk-protected'
         }}
-    needs:
-      - check-actor
-      - safe-to-test
-    if: >-
-      always() &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        github.event_name == 'schedule' ||
-        (needs.check-actor.result == 'success' &&
-         (needs.safe-to-test.result == 'success' || needs.safe-to-test.result == 'skipped'))
-      )
+    if: github.actor != 'pre-commit-ci[bot]'
     strategy:
       fail-fast: false
       matrix:
@@ -84,6 +55,7 @@ jobs:
         with:
           path: ansible_collections/splunk/enterprise
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+          allow-unsafe-pr-checkout: true
 
       - name: Install Python ${{ env.PYTHON_VERSION }}
         run: |
